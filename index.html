@@ -1,0 +1,996 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>海风城市冲刺 · 1000m 小猫跑酷</title>
+<meta name="description" content="一只小猫从海边公路出发，穿过城市高架与夜间灯牌街区，冲过 1000 米终点的伪 3D 跑酷网页。" />
+<style>
+  :root {
+    color-scheme: dark;
+    --ink: #f5fbff;
+    --muted: rgba(226, 245, 255, .70);
+    --panel: rgba(9, 17, 34, .74);
+    --panel-edge: rgba(155, 232, 255, .34);
+    --cyan: #61f2ff;
+    --gold: #ffd75e;
+    --magenta: #ff71c8;
+    --shadow: 0 24px 70px rgba(1, 6, 20, .58);
+    font-family: "Trebuchet MG", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #05070f; }
+  body { touch-action: none; -webkit-user-select: none; user-select: none; }
+  #game {
+    position: fixed; inset: 0; width: 100%; width: 100vw; height: 100%; height: 100dvh;
+    display: block; background: #08111f;
+  }
+  .hud {
+    position: fixed; inset: 12px 12px auto; z-index: 5; display: flex; gap: 10px;
+    align-items: flex-start; justify-content: space-between; pointer-events: none;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left);
+  }
+  .stats {
+    min-width: min(390px, calc(100vw - 112px)); border: 1px solid rgba(156, 226, 255, .24);
+    background: linear-gradient(135deg, rgba(8, 18, 37, .78), rgba(7, 14, 31, .58));
+    backdrop-filter: blur(14px); border-radius: 16px; padding: 10px 12px; box-shadow: 0 12px 36px rgba(0, 0, 0, .25);
+  }
+  .stat-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+  .distance { font-size: clamp(25px, 4.4vw, 38px); font-weight: 800; letter-spacing: -.5px; line-height: 1; }
+  .distance span { font-size: .47em; opacity: .65; margin-left: 2px; }
+  .chips { display: flex; gap: 8px; margin-top: 7px; font-size: 12px; color: var(--muted); }
+  .chip { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+  .coin-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--gold); box-shadow: 0 0 8px var(--gold); }
+  .life { color: #ff8b8b; letter-spacing: 2px; }
+  .stage { color: var(--cyan); font-weight: 700; }
+  .track { margin-top: 9px; height: 8px; border-radius: 99px; background: rgba(255,255,255,.10); overflow: hidden; position: relative; }
+  .track-fill {
+    height: 100%; width: 0%; border-radius: 99px; transition: width .12s linear;
+    background: linear-gradient(90deg, #57e6d0, #61a8ff 38%, #b684ff 70%, #ff71c8);
+    box-shadow: 0 0 14px rgba(97, 242, 255, .55);
+  }
+  .marks { position: absolute; inset: 0; display: flex; }
+  .marks i { width: 32%; border-right: 1px solid rgba(255,255,255,.24); }
+  .marks i:nth-child(2) { width: 36%; }
+  .marks i:last-child { width: 32%; border-right: 0; }
+  .hud-actions { display: grid; gap: 8px; pointer-events: auto; }
+  .icon-button {
+    width: 40px; height: 40px; border: 1px solid rgba(156,226,255,.28); border-radius: 13px;
+    background: rgba(7, 15, 31, .70); color: var(--ink); font-size: 16px; cursor: pointer;
+    backdrop-filter: blur(12px); display: grid; place-items: center;
+  }
+  .icon-button:hover { border-color: rgba(97,242,255,.75); transform: translateY(-1px); }
+  .icon-button:focus-visible, .control:focus-visible, .primary:focus-visible { outline: 2px solid var(--cyan); outline-offset: 3px; }
+  .touch-controls {
+    position: fixed; left: 0; right: 0; bottom: calc(12px + env(safe-area-inset-bottom)); z-index: 5;
+    display: none; justify-content: space-between; align-items: end; gap: 12px;
+    padding: 0 14px; pointer-events: none;
+  }
+  @media (pointer: coarse) { .touch-controls { display: flex; } }
+  .control-cluster { display: flex; gap: 10px; pointer-events: auto; }
+  .control {
+    width: 68px; height: 68px; border-radius: 22px; border: 1px solid rgba(156,226,255,.30);
+    color: var(--ink); background: rgba(6, 14, 31, .68); font-size: 24px; font-weight: 800;
+    backdrop-filter: blur(13px); cursor: pointer; box-shadow: 0 12px 30px rgba(0,0,0,.24);
+  }
+  .control:active { transform: scale(.96); border-color: var(--cyan); }
+  .control.jump { width: 84px; height: 84px; border-radius: 50%; background: rgba(13, 43, 59, .76); color: #eaffff; font-size: 18px; }
+  .overlay {
+    position: fixed; inset: 0; z-index: 10; display: grid; place-items: center; padding: 18px;
+    background: radial-gradient(circle at 50% 42%, rgba(8, 24, 43, .78), rgba(2, 6, 15, .92));
+    backdrop-filter: blur(8px);
+  }
+  .overlay[hidden] { display: none; }
+  .panel {
+    width: min(560px, 100%); max-height: min(760px, calc(100dvh - 30px)); overflow: auto;
+    border: 1px solid var(--panel-edge); background: var(--panel); border-radius: 25px;
+    box-shadow: var(--shadow); padding: clamp(20px, 4vw, 32px); text-align: center;
+  }
+  .kicker {
+    display: inline-flex; align-items: center; gap: 8px; margin-bottom: 10px;
+    padding: 5px 11px; border-radius: 99px; border: 1px solid rgba(97,242,255,.34);
+    color: var(--cyan); font-size: 12px; letter-spacing: 2.4px; text-transform: uppercase;
+  }
+  h1, h2 { margin: 0; color: var(--ink); line-height: 1.1; }
+  h1 { font-size: clamp(34px, 7vw, 56px); letter-spacing: -1.5px; }
+  h2 { font-size: clamp(28px, 5.6vw, 42px); letter-spacing: -1px; }
+  .sub { margin: 12px auto 0; max-width: 42ch; color: var(--muted); line-height: 1.65; font-size: 15px; }
+  .route {
+    margin: 20px 0 16px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px;
+    font-size: 12px; color: rgba(236,250,255,.82);
+  }
+  .route div { border-radius: 12px; padding: 9px 6px; background: rgba(255,255,255,.055); border: 1px solid rgba(255,255,255,.09); }
+  .route strong { display: block; color: var(--ink); font-size: 13px; margin-bottom: 4px; }
+  .keys { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; color: var(--muted); font-size: 13px; }
+  .keys span { border: 1px solid rgba(255,255,255,.14); border-radius: 8px; padding: 5px 8px; background: rgba(255,255,255,.05); }
+  .primary {
+    margin-top: 21px; width: min(310px, 100%); padding: 15px 20px; border-radius: 17px; cursor: pointer;
+    border: 0; color: #04121d; font: 800 18px inherit; letter-spacing: .5px;
+    background: linear-gradient(120deg, #7ef7e3, #61b7ff 48%, #ff8ad6); box-shadow: 0 16px 34px rgba(67, 188, 255, .28);
+  }
+  .primary:hover { filter: brightness(1.07); transform: translateY(-1px); }
+  .secondary-button {
+    margin-top: 10px; border: 1px solid rgba(255,255,255,.18); background: rgba(255,255,255,.06);
+    color: var(--ink); border-radius: 13px; padding: 10px 14px; cursor: pointer; font: 700 14px inherit;
+  }
+  .result-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin: 20px 0 4px; }
+  .result { padding: 14px 10px; border-radius: 15px; background: rgba(255,255,255,.055); border: 1px solid rgba(255,255,255,.09); }
+  .result b { display: block; color: var(--ink); font-size: clamp(22px, 4.6vw, 31px); line-height: 1.15; }
+  .result small { display: block; margin-top: 5px; color: var(--muted); font-size: 12px; }
+  .rank {
+    margin-top: 15px; padding: 11px 14px; border-radius: 14px; color: #081420; font-weight: 800;
+    background: linear-gradient(100deg, var(--gold), #ffdf8f);
+  }
+  .fail .rank { color: #2a0810; background: linear-gradient(100deg, #ff8b8b, #ffb8a2); }
+  .best { margin-top: 8px; color: var(--muted); font-size: 12px; }
+  @media (max-width: 520px) {
+    .stats { border-radius: 13px; padding: 9px 10px; }
+    .chips { font-size: 11px; }
+    .route { grid-template-columns: 1fr; }
+    .result-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .track-fill { transition: none; }
+    .primary:hover, .icon-button:hover { transform: none; }
+  }
+</style>
+</head>
+<body>
+<canvas id="game" aria-label="海风城市冲刺伪 3D 跑酷画面"></canvas>
+
+<div class="hud" aria-live="off">
+  <section class="stats" aria-label="比赛状态">
+    <div class="stat-row">
+      <div class="distance"><b id="distanceText">0</b><span>/ 1000m</span></div>
+      <div class="stage" id="stageText">海边公路</div>
+    </div>
+    <div class="chips">
+      <span class="chip"><i class="coin-dot"></i><b id="coinText">0</b> 金币</span>
+      <span class="chip life"><span id="lifeText">♥♥♥</span></span>
+      <span class="chip" id="speedText">0 km/h</span>
+    </div>
+    <div class="track" role="progressbar" aria-label="赛程进度" aria-valuemin="0" aria-valuemax="1000" aria-valuenow="0" id="progressBar">
+      <div class="track-fill" id="progressFill"></div>
+      <div class="marks"><i></i><i></i><i></i></div>
+    </div>
+  </section>
+  <div class="hud-actions">
+    <button class="icon-button" id="muteButton" type="button" aria-label="开启音效">🔊</button>
+    <button class="icon-button" id="pauseButton" type="button" aria-label="暂停游戏">⏸</button>
+  </div>
+</div>
+
+<div class="touch-controls" aria-hidden="true">
+  <div class="control-cluster">
+    <button class="control" id="leftButton" type="button" aria-label="向左换道">←</button>
+  </div>
+  <div class="control-cluster">
+    <button class="control jump" id="jumpButton" type="button" aria-label="跳跃">跳跃</button>
+    <button class="control" id="rightButton" type="button" aria-label="向右换道">→</button>
+  </div>
+</div>
+
+<div class="overlay" id="startOverlay">
+  <section class="panel">
+    <div class="kicker"><span>1000M CITY RUN</span><span>伪 3D</span></div>
+    <h1>海风城市冲刺</h1>
+    <p class="sub">小猫从落日海边公路出发，掠过城市高架的钢索与车灯，最后冲进霓虹灯牌街区，撞线 1000 米终点。</p>
+    <div class="route" aria-label="赛段变化">
+      <div><strong>0–320m</strong>海边公路 · 海风与棕榈</div>
+      <div><strong>320–680m</strong>城市高架 · 钢索与楼宇</div>
+      <div><strong>680–1000m</strong>夜间灯牌街区 · 霓虹雨</div>
+    </div>
+    <div class="keys">
+      <span>← / A 左换道</span><span>→ / D 右换道</span><span>空格 / ↑ / W 跳跃</span><span>P 暂停</span>
+    </div>
+    <button class="primary" id="startButton" type="button">开始冲刺</button>
+    <div class="best" id="startBest">本机最佳：暂无记录</div>
+  </section>
+</div>
+
+<div class="overlay" id="pauseOverlay" hidden>
+  <section class="panel">
+    <div class="kicker">PAUSED</div>
+    <h2>暂停在海风里</h2>
+    <p class="sub">呼吸一下，路线不会消失。</p>
+    <button class="primary" id="resumeButton" type="button">继续冲刺</button>
+    <button class="secondary-button" id="restartFromPause" type="button">重新开始 1000m</button>
+  </section>
+</div>
+
+<div class="overlay" id="resultOverlay" hidden>
+  <section class="panel" id="resultPanel">
+    <div class="kicker" id="resultKicker">FINISH</div>
+    <h2 id="resultTitle">冲过终点！</h2>
+    <p class="sub" id="resultCopy">海风、钢桥与霓虹都被你甩在身后。</p>
+    <div class="result-grid">
+      <div class="result"><b id="finalDistance">1000m</b><small>完成距离</small></div>
+      <div class="result"><b id="finalTime">0.00s</b><small>用时</small></div>
+      <div class="result"><b id="finalCoins">0</b><small>金币</small></div>
+      <div class="result"><b id="finalLives">0</b><small>剩余生命</small></div>
+    </div>
+    <div class="rank" id="finalRank">S</div>
+    <button class="primary" id="againButton" type="button">再跑一次</button>
+    <div class="best" id="resultBest">本机最佳：暂无记录</div>
+  </section>
+</div>
+
+<script>
+(() => {
+  'use strict';
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d', { alpha: false });
+  const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  const W = { // world dimensions, metres
+    lanes: [-2.12, 0, 2.12],
+    laneWidth: 2.12,
+    roadHalf: 3.36,
+    far: 232,
+    catZ: 3.25,
+    finish: 1000
+  };
+
+  const els = {
+    distance: document.getElementById('distanceText'),
+    stage: document.getElementById('stageText'),
+    coins: document.getElementById('coinText'),
+    lives: document.getElementById('lifeText'),
+    speed: document.getElementById('speedText'),
+    progress: document.getElementById('progressBar'),
+    progressFill: document.getElementById('progressFill'),
+    start: document.getElementById('startOverlay'),
+    pause: document.getElementById('pauseOverlay'),
+    result: document.getElementById('resultOverlay'),
+    resultPanel: document.getElementById('resultPanel'),
+    resultKicker: document.getElementById('resultKicker'),
+    resultTitle: document.getElementById('resultTitle'),
+    resultCopy: document.getElementById('resultCopy'),
+    finalDistance: document.getElementById('finalDistance'),
+    finalTime: document.getElementById('finalTime'),
+    finalCoins: document.getElementById('finalCoins'),
+    finalLives: document.getElementById('finalLives'),
+    finalRank: document.getElementById('finalRank'),
+    resultBest: document.getElementById('resultBest'),
+    startBest: document.getElementById('startBest'),
+    pauseButton: document.getElementById('pauseButton'),
+    muteButton: document.getElementById('muteButton')
+  };
+
+  const state = {
+    mode: 'start', // start | running | paused | finished | failed
+    distance: 0,
+    speed: 11.2,
+    targetSpeed: 11.2,
+    lane: 1,
+    catX: 0,
+    catY: 0,
+    vy: 0,
+    airborne: false,
+    coins: 0,
+    lives: 3,
+    elapsed: 0,
+    invuln: 0,
+    shake: 0,
+    entities: [],
+    nextSpawn: 48,
+    lastPickup: -99,
+    runningPhase: 0,
+    muted: true,
+    best: JSON.parse(localStorage.getItem('seaCitySprintBest') || 'null')
+  };
+
+  let view = { w: 0, h: 0, dpr: 1, horizon: 0, focal: 1, cx: 0 };
+  function resize() {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    view.w = window.innerWidth;
+    view.h = window.innerHeight;
+    view.dpr = dpr;
+    canvas.width = Math.round(view.w * dpr);
+    canvas.height = Math.round(view.h * dpr);
+    canvas.style.width = view.w + 'px';
+    canvas.style.height = view.h + 'px';
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    view.horizon = view.h * (view.h > view.w ? .35 : .34);
+    view.focal = Math.min(view.w * .88, view.h * 1.02);
+    view.cx = view.w / 2;
+  }
+  addEventListener('resize', resize, { passive: true });
+  resize();
+
+  const paletteSets = {
+    coast: {
+      skyTop:'#2a5c9a', skyMid:'#7fa9c9', skyLow:'#ffd0a2', ground:'#c99168', groundFar:'#eebc94',
+      road:'#40474e', roadAlt:'#454c54', edge:'#f4f7fb', stripe:'#ffdd78', rail:'#f4fbff', fog:'#ffd8b4'
+    },
+    city: {
+      skyTop:'#20355d', skyMid:'#3f6289', skyLow:'#8ec4de', ground:'#283544', groundFar:'#475a68',
+      road:'#333b43', roadAlt:'#384149', edge:'#d9f6ff', stripe:'#8ff3ff', rail:'#7fd8f6', fog:'#9fd5e9'
+    },
+    neon: {
+      skyTop:'#070521', skyMid:'#22104d', skyLow:'#6d2a86', ground:'#0d1020', groundFar:'#211334',
+      road:'#191d2a', roadAlt:'#1e2230', edge:'#ff8ede', stripe:'#61f2ff', rail:'#ff75c8', fog:'#4d1a62'
+    }
+  };
+
+  function hexRGB(color) {
+    return [parseInt(color.slice(1,3),16), parseInt(color.slice(3,5),16), parseInt(color.slice(5,7),16)];
+  }
+  function rgbHex(c) {
+    return '#' + c.map(v => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2,'0')).join('');
+  }
+  function mixColor(a, b, t) { return rgbHex(hexRGB(a).map((v,i) => v + (hexRGB(b)[i]-v)*t)); }
+
+  function palette(d) {
+    let a = paletteSets.coast, b = paletteSets.city, t = 0;
+    if (d < 280) { a = paletteSets.coast; b = paletteSets.city; t = 0; }
+    else if (d < 345) { a = paletteSets.coast; b = paletteSets.city; t = (d-280)/65; }
+    else if (d < 640) { a = paletteSets.city; b = paletteSets.neon; t = 0; }
+    else if (d < 704) { a = paletteSets.city; b = paletteSets.neon; t = (d-640)/64; }
+    else { a = paletteSets.neon; b = paletteSets.neon; t = 0; }
+    const out = {};
+    for (const k in a) out[k] = t === 0 ? a[k] : mixColor(a[k], b[k], t);
+    return out;
+  }
+  function stageInfo(d) {
+    if (d < 320) return { name: '海边公路', index: 0 };
+    if (d < 680) return { name: '城市高架', index: 1 };
+    return { name: '夜间灯牌街区', index: 2 };
+  }
+  function project(x, y, z) {
+    const zz = Math.max(z, .08);
+    const scale = view.focal / zz;
+    return {
+      x: view.cx + x * scale,
+      y: view.horizon + (1.52 - y) * scale,
+      scale
+    };
+  }
+
+  // A tiny synthesized sound engine keeps the page fully self-contained.
+  let audioCtx = null;
+  function tone(freq, duration=.10, type='sine', gain=.055) {
+    if (state.muted || !audioCtx) return;
+    const now = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const amp = audioCtx.createGain();
+    osc.type = type; osc.frequency.value = freq;
+    amp.gain.setValueAtTime(gain, now);
+    amp.gain.exponentialRampToValueAtTime(.0001, now + duration);
+    osc.connect(amp).connect(audioCtx.destination);
+    osc.start(now); osc.stop(now + duration);
+  }
+  function enableAudio() {
+    if (!audioCtx) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (AC) audioCtx = new AC();
+    }
+    if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+  }
+
+  function resetGame() {
+    state.mode = 'running';
+    state.distance = 0; state.speed = 11.2; state.targetSpeed = 11.2;
+    state.lane = 1; state.catX = 0; state.catY = 0; state.vy = 0; state.airborne = false;
+    state.coins = 0; state.lives = 3; state.elapsed = 0; state.invuln = 0; state.shake = 0;
+    state.entities = []; state.nextSpawn = 46; state.lastPickup = -99; state.runningPhase = 0;
+    els.start.hidden = true; els.pause.hidden = true; els.result.hidden = true;
+    updateHUD();
+  }
+
+  function updateHUD() {
+    const d = Math.min(1000, Math.floor(state.distance));
+    els.distance.textContent = d;
+    els.coins.textContent = state.coins;
+    els.lives.textContent = '♥'.repeat(state.lives) + '·'.repeat(Math.max(0, 3-state.lives));
+    els.speed.textContent = Math.round(state.speed * 3.6) + ' km/h';
+    els.stage.textContent = stageInfo(state.distance).name;
+    const pct = Math.min(100, state.distance / 10);
+    els.progressFill.style.width = pct + '%';
+    els.progress.setAttribute('aria-valuenow', d);
+  }
+
+  function move(dir) {
+    if (state.mode !== 'running') return;
+    const next = Math.max(0, Math.min(2, state.lane + dir));
+    if (next !== state.lane) {
+      state.lane = next;
+      tone(next < state.lane ? 410 : 480, .055, 'triangle', .035);
+    }
+  }
+  function jump() {
+    if (state.mode !== 'running' || state.airborne) return;
+    state.airborne = true;
+    state.vy = 6.25;
+    tone(650, .12, 'triangle', .045);
+    setTimeout(() => tone(820, .08, 'triangle', .028), 55);
+  }
+
+  function entity(type, z, lane, y=0) { return { type, z, lane, y, used:false }; }
+
+  function spawnAhead() {
+    while (state.nextSpawn < state.distance + W.far) {
+      const z = state.nextSpawn;
+      const diff = z / W.finish;
+      const safe = Math.floor(Math.random() * 3);
+      const roll = Math.random();
+      if (roll < .50) { // jump-and-weave gate: the marked lane stays passable by jumping
+        state.entities.push(entity('low', z, safe));
+        const otherLanes = [0,1,2].filter(l => l !== safe);
+        const blocked = Math.random() < .38 + diff*.34 ? 2 : 1;
+        for (let i=0; i<blocked; i++) state.entities.push(entity('block', z + (Math.random()*.6-.3), otherLanes[i]));
+        for (let i=0; i<5; i++) {
+          const arcY = [.55, 1.12, 1.48, 1.12, .55][i];
+          state.entities.push(entity('coin', z - 2.4 + i*1.35, safe, arcY));
+        }
+      } else if (roll < .78) { // two blocked lanes, one clear path
+        const blockedLanes = [0,1,2].filter(l => l !== safe).sort(() => Math.random()-.5);
+        const count = Math.random() < .58 + diff*.22 ? 2 : 1;
+        for (let i=0; i<count; i++) state.entities.push(entity('block', z + (Math.random()*.7-.35), blockedLanes[i]));
+        for (let i=0; i<4; i++) state.entities.push(entity('coin', z - 1.7 + i*1.5, safe, .55));
+      } else { // reward line
+        const coinLane = Math.floor(Math.random() * 3);
+        for (let i=0; i<6; i++) state.entities.push(entity('coin', z - 2.5 + i*1.45, coinLane, i===2||i===3 ? 1.15 : .55));
+        if (diff > .30 && Math.random() < .45) {
+          const obstacleLane = (coinLane + 1 + Math.floor(Math.random()*2)) % 3;
+          state.entities.push(entity('low', z + .6, obstacleLane));
+        }
+      }
+      const spacing = 27 - diff*9.5 + Math.random()*8;
+      state.nextSpawn += Math.max(15.5, spacing);
+    }
+    state.entities = state.entities.filter(e => e.z > state.distance - 16);
+  }
+
+  function update(dt) {
+    if (state.mode !== 'running') return;
+    state.elapsed += dt;
+    state.targetSpeed = 11.2 + 14.8 * Math.min(1, state.distance / 900);
+    state.speed += (state.targetSpeed - state.speed) * Math.min(1, dt * .7);
+    state.distance = Math.min(W.finish, state.distance + state.speed * dt);
+    state.runningPhase += dt * (7 + state.speed*.38);
+    state.invuln = Math.max(0, state.invuln - dt);
+    state.shake = Math.max(0, state.shake - dt*4.2);
+
+    const targetX = W.lanes[state.lane];
+    const laneDelta = targetX - state.catX;
+    state.catX += Math.max(-8.8*dt, Math.min(8.8*dt, laneDelta));
+    if (state.airborne) {
+      state.catY += state.vy * dt;
+      state.vy -= 16.3 * dt;
+      if (state.catY <= 0) { state.catY = 0; state.vy = 0; state.airborne = false; tone(210,.055,'sine',.022); }
+    }
+    spawnAhead();
+
+    for (const e of state.entities) {
+      if (e.used) continue;
+      const rel = e.z - state.distance;
+      if (Math.abs(rel - W.catZ) > 1.05) continue;
+      const laneMatch = Math.abs(state.catX - W.lanes[e.lane]) < 1.12;
+      if (e.type === 'coin' && laneMatch && Math.abs(state.catY + .40 - e.y) < .72) {
+        e.used = true; state.coins++; state.lastPickup = state.elapsed; tone(1180,.085,'sine',.042);
+        setTimeout(() => tone(1540,.075,'sine',.03), 45);
+      } else if ((e.type === 'block' || e.type === 'low') && laneMatch && state.invuln <= 0) {
+        const cleared = e.type === 'low' && state.catY > .58;
+        if (!cleared) {
+          e.used = true; state.lives--; state.invuln = 1.35; state.shake = reducedMotion ? .18 : 1;
+          state.speed = Math.max(8.5, state.speed * .54);
+          tone(130,.25,'sawtooth',.045);
+          if (state.lives <= 0) { finish(false); return; }
+        }
+      }
+    }
+
+    updateHUD();
+    if (state.distance >= W.finish) finish(true);
+  }
+
+  function rankOf(score) {
+    if (score >= 9700) return 'S · 海风传奇';
+    if (score >= 8500) return 'A · 城市飞爪';
+    if (score >= 7000) return 'B · 霓虹冲刺';
+    if (score >= 5400) return 'C · 稳稳落地';
+    return 'D · 下次更快';
+  }
+  function scoreOf(done, time, coins, lives) {
+    if (!done) return Math.round(state.distance * 4 + coins*45);
+    return Math.round(coins*55 + lives*180 + Math.max(1800, 9500 - time*9));
+  }
+  function bestLabel() {
+    return state.best ? `本机最佳：${state.best.score.toLocaleString()} 分 · ${state.best.coins} 金币 · ${state.best.time.toFixed(2)}s` : '本机最佳：暂无记录';
+  }
+  function finish(done) {
+    state.mode = done ? 'finished' : 'failed';
+    const time = state.elapsed;
+    const score = scoreOf(done, time, state.coins, Math.max(0, state.lives));
+    if (done && (!state.best || score > state.best.score)) {
+      state.best = { score, coins: state.coins, time };
+      localStorage.setItem('seaCitySprintBest', JSON.stringify(state.best));
+    }
+    els.resultPanel.classList.toggle('fail', !done);
+    els.resultKicker.textContent = done ? 'FINISH · 1000M' : 'RUN OVER';
+    els.resultTitle.textContent = done ? '冲过 1000 米终点！' : '小猫在高架上摔了一跤';
+    els.resultCopy.textContent = done
+      ? '海风、钢桥与霓虹灯牌都被甩在身后，结算这次冲刺。'
+      : '障碍吃掉了最后一条生命。记住节奏，再跑一次。';
+    els.finalDistance.textContent = Math.floor(state.distance) + 'm';
+    els.finalTime.textContent = time.toFixed(2) + 's';
+    els.finalCoins.textContent = state.coins;
+    els.finalLives.textContent = Math.max(0, state.lives);
+    els.finalRank.textContent = rankOf(score) + ' · ' + score.toLocaleString() + ' 分';
+    els.resultBest.textContent = bestLabel();
+    els.startBest.textContent = bestLabel();
+    els.result.hidden = false;
+  }
+
+  function roundRect(x,y,w,h,r) {
+    ctx.beginPath();
+    ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r);
+    ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath();
+  }
+
+  function drawBackdrop(p) {
+    const g = ctx.createLinearGradient(0,0,0,view.horizon);
+    g.addColorStop(0,p.skyTop); g.addColorStop(.58,p.skyMid); g.addColorStop(1,p.skyLow);
+    ctx.fillStyle = g; ctx.fillRect(0,0,view.w,view.horizon+1);
+
+    const d = state.distance;
+    const coastW = d < 345 ? Math.max(0, 1-Math.max(0,(d-280)/65)) : 0;
+    const cityW = Math.max(0, d < 345 ? Math.min(1,(d-280)/65) : 1 - Math.max(0,(d-640)/64));
+    const neonW = Math.min(1, Math.max(0,(d-640)/64));
+    const parallax = reducedMotion ? 0 : (state.catX * -7 + Math.sin(d*.008)*8);
+
+    // Sun and moon share the same sky path, echoing the journey from dusk to night.
+    const sunX = view.w*.68 + parallax, sunY = view.horizon - view.h*.145;
+    if (coastW > .02) {
+      ctx.globalAlpha = coastW;
+      const sg = ctx.createRadialGradient(sunX,sunY,2,sunX,sunY,view.h*.22);
+      sg.addColorStop(0,'rgba(255,236,190,.98)'); sg.addColorStop(.28,'rgba(255,176,108,.72)'); sg.addColorStop(1,'rgba(255,140,90,0)');
+      ctx.fillStyle = sg; ctx.beginPath(); ctx.arc(sunX,sunY,view.h*.22,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle = '#fff0c4'; ctx.beginPath(); ctx.arc(sunX,sunY,Math.max(12,view.h*.032),0,Math.PI*2); ctx.fill();
+    }
+    if (cityW+neonW > .02) {
+      ctx.globalAlpha = Math.max(cityW*.3, neonW);
+      const moonX = view.w*.75 + parallax*.5;
+      ctx.fillStyle = neonW > .5 ? '#f1eaff' : '#f8fbff';
+      ctx.beginPath(); ctx.arc(moonX,view.horizon-view.h*.17,Math.max(10,view.h*.024),0,Math.PI*2); ctx.fill();
+      ctx.fillStyle = p.skyTop; ctx.globalAlpha *= .86;
+      ctx.beginPath(); ctx.arc(moonX-view.h*.018,view.horizon-view.h*.183,Math.max(8,view.h*.021),0,Math.PI*2); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    // Sea band, only in the coastal horizon.
+    if (coastW > .02) {
+      ctx.globalAlpha = coastW;
+      const seaH = view.h*.115;
+      const sea = ctx.createLinearGradient(0,view.horizon-seaH,0,view.horizon);
+      sea.addColorStop(0,'#4f86ad'); sea.addColorStop(1,'#e5b58d');
+      ctx.fillStyle = sea; ctx.fillRect(0,view.horizon-seaH,view.w,seaH);
+      ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineWidth = 1;
+      for (let i=0;i<8;i++) {
+        const yy = view.horizon-seaH + seaH*(i+.6)/9;
+        const w = (i+2)*7;
+        ctx.beginPath(); ctx.moveTo(view.w*.62 + parallax*.3-w/2, yy); ctx.lineTo(view.w*.62 + parallax*.3+w/2, yy); ctx.stroke();
+      }
+    }
+    ctx.globalAlpha = 1;
+
+    // City skyline is procedural and deterministic enough to feel like a remembered place.
+    if (cityW+neonW > .02) {
+      const alpha = Math.max(cityW, neonW);
+      ctx.globalAlpha = alpha * .84;
+      for (let layer=0; layer<2; layer++) {
+        const scale = layer ? .80 : 1;
+        ctx.fillStyle = layer ? mixColor(p.skyTop,'#000000',.24) : mixColor(p.skyMid,'#000000',.38);
+        const count = Math.ceil(view.w / (layer ? 64 : 96)) + 2;
+        const baseX = (d*(layer?.012:.022) + layer*80 + parallax*.25) % 96;
+        for (let i=-1;i<count;i++) {
+          const seed = Math.sin((i+layer*7)*12.9898)*43758.5453;
+          const rnd = seed-Math.floor(seed);
+          const bw = (layer ? 34 : 48) + rnd*(layer ? 40 : 72);
+          const bh = (view.h*(layer?.10:.16)) * (.48+rnd*.90) * scale;
+          const x = i*(layer ? 64 : 96) - baseX;
+          ctx.fillRect(x, view.horizon-bh, bw, bh+1);
+          if (neonW>.15 && layer===0) {
+            ctx.fillStyle = `rgba(${neonW>.7?'255,120,220':'150,220,255'},${.18+neonW*.45})`;
+            for (let wy=0; wy<Math.floor(bh/16); wy++) for (let wx=0; wx<Math.floor(bw/13); wx++) {
+              if ((i*13+wy*7+wx)%3 < 1) ctx.fillRect(x+7+wx*13, view.horizon-bh+8+wy*16, 3, 4);
+            }
+            ctx.fillStyle = mixColor(p.skyMid,'#000000',.38);
+          }
+        }
+      }
+      ctx.globalAlpha = 1;
+    }
+
+    // Ground plane below the horizon.
+    const ground = ctx.createLinearGradient(0,view.horizon,0,view.h);
+    ground.addColorStop(0,p.groundFar); ground.addColorStop(.16,p.ground);
+    ctx.fillStyle = ground; ctx.fillRect(0,view.horizon,view.w,view.h-view.horizon);
+
+    // Distance fog at the vanishing point.
+    ctx.globalAlpha = .82;
+    const fog = ctx.createLinearGradient(0,view.horizon-view.h*.055,0,view.horizon+view.h*.045);
+    fog.addColorStop(0,'rgba(255,255,255,0)'); fog.addColorStop(.55,p.fog); fog.addColorStop(1,'rgba(255,255,255,0)');
+    ctx.fillStyle = fog; ctx.fillRect(0,view.horizon-view.h*.055,view.w,view.h*.10);
+    ctx.globalAlpha = 1;
+  }
+
+  function drawRoad(p) {
+    const near = .40;
+    const lN=project(-W.roadHalf,0,near), rN=project(W.roadHalf,0,near);
+    const lF=project(-W.roadHalf,0,W.far), rF=project(W.roadHalf,0,W.far);
+    ctx.beginPath(); ctx.moveTo(lN.x,lN.y); ctx.lineTo(rN.x,rN.y); ctx.lineTo(rF.x,rF.y); ctx.lineTo(lF.x,lF.y); ctx.closePath();
+    const rg = ctx.createLinearGradient(0,view.horizon,0,view.h);
+    rg.addColorStop(0,mixColor(p.road,p.fog,.70)); rg.addColorStop(.18,p.road); rg.addColorStop(1,mixColor(p.road,'#000000',.22));
+    ctx.fillStyle = rg; ctx.fill();
+    ctx.save(); ctx.clip();
+
+    const segment = 7;
+    const startWorld = Math.floor((state.distance+near)/segment)*segment;
+    for (let w=startWorld; w<state.distance+W.far; w+=segment) {
+      const z0=Math.max(near,w-state.distance), z1=w+segment-state.distance;
+      if (z1<=near) continue;
+      if (Math.floor(w/segment)%2===0) continue;
+      const a=project(-W.roadHalf,0,z0), b=project(W.roadHalf,0,z0), c=project(W.roadHalf,0,z1), d=project(-W.roadHalf,0,z1);
+      ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.lineTo(c.x,c.y); ctx.lineTo(d.x,d.y); ctx.closePath();
+      ctx.globalAlpha = .34; ctx.fillStyle = p.roadAlt; ctx.fill(); ctx.globalAlpha = 1;
+    }
+
+    // Lane stripes are individual world-space patches, so their foreshortening is always correct.
+    const stripePeriod=10, stripeLen=3.1;
+    const stripeStartWorld=Math.floor((state.distance+near)/stripePeriod)*stripePeriod;
+    for (const lx of [-W.laneWidth, W.laneWidth]) {
+      for (let w=stripeStartWorld; w<state.distance+W.far; w+=stripePeriod) {
+        const z0=Math.max(near,w-state.distance), z1=Math.min(W.far,w+stripeLen-state.distance);
+        if (z1<=near || z0>=z1) continue;
+        const half=.10;
+        const a=project(lx-half,0,z0), b=project(lx+half,0,z0), c=project(lx+half,0,z1), d=project(lx-half,0,z1);
+        ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.lineTo(c.x,c.y); ctx.lineTo(d.x,d.y); ctx.closePath();
+        ctx.globalAlpha=.82; ctx.fillStyle=p.stripe; ctx.fill();
+      }
+    }
+    ctx.globalAlpha=1; ctx.restore();
+
+    // Bright road shoulders: directional lines only, never a screen-wide crossing bar.
+    for (const side of [-1,1]) {
+      const edge=side*W.roadHalf;
+      const pts=[[near,0],[W.far,0]];
+      for (const [z,y] of pts) {
+        const q=project(edge+side*.12,y,z), q2=project(edge-side*.12,y,z);
+        ctx.beginPath(); ctx.moveTo(q.x,q.y); ctx.lineTo(q2.x,q2.y);
+        ctx.strokeStyle=mixColor(p.edge,p.fog,.55); ctx.lineWidth=Math.max(1,project(0,0,z).scale*.12); ctx.stroke();
+      }
+    }
+  }
+
+  function drawRails(p) {
+    const gap=4.25;
+    const start=Math.floor((state.distance+.45)/gap)*gap;
+    ctx.lineCap='round';
+    for (let w=start;w<state.distance+W.far*.72;w+=gap) {
+      const z=Math.max(.45,w-state.distance), z2=w+gap-state.distance;
+      const fade=Math.max(0,1-z/(W.far*.72));
+      if (fade<=0) continue;
+      for (const side of [-1,1]) {
+        const x=side*(W.roadHalf+.44);
+        const base=project(x,0,z), top=project(x,.82,z);
+        // post
+        ctx.strokeStyle=`rgba(${side<0?'220,240,255':'220,240,255'},${.18+fade*.45})`;
+        ctx.lineWidth=Math.max(1,base.scale*.10);
+        ctx.beginPath(); ctx.moveTo(base.x,base.y); ctx.lineTo(top.x,top.y); ctx.stroke();
+        // two short rail pieces; both remain on one side of the road
+        for (const railY of [.35,.76]) {
+          const a=project(x,railY,z), b=project(x,railY,z2);
+          ctx.strokeStyle=p.rail; ctx.globalAlpha=.24+fade*.60;
+          ctx.lineWidth=Math.max(1,(a.scale+b.scale)*.045);
+          ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke();
+        }
+        ctx.globalAlpha=1;
+      }
+    }
+  }
+
+  function drawScenery(p) {
+    const d=state.distance;
+    // Palms line the coastal road.
+    if (d < 390) {
+      const alpha=d<300?1:1-(d-300)/90;
+      const gap=23;
+      const start=Math.floor((d+1)/gap)*gap;
+      for (let w=start;w<d+180;w+=gap) {
+        const side=((w/gap)%2)?1:-1;
+        const z=Math.max(.55,w-d), x=side*(W.roadHalf+2.25);
+        const q=project(x,0,z), h=3.8*q.scale;
+        if (h<4) continue;
+        ctx.globalAlpha=alpha*Math.min(1,(180-(w-d))/30+.3);
+        ctx.strokeStyle='rgba(51,40,38,.84)'; ctx.lineWidth=Math.max(1.3,q.scale*.10);
+        ctx.beginPath(); ctx.moveTo(q.x,q.y); ctx.quadraticCurveTo(q.x+side*h*.12,q.y-h*.65,q.x+side*h*.08,q.y-h); ctx.stroke();
+        ctx.fillStyle='rgba(45,73,54,.85)';
+        for (let i=0;i<6;i++) {
+          const ang=(-.25+i*.72)*side;
+          ctx.beginPath(); ctx.moveTo(q.x+side*h*.08,q.y-h);
+          ctx.quadraticCurveTo(q.x+side*h*.08+Math.cos(ang)*h*.48,q.y-h-Math.sin(ang)*h*.20,q.x+side*h*.08+Math.cos(ang)*h*.68,q.y-h+Math.abs(Math.sin(i-2.5))*.14*h);
+          ctx.lineWidth=Math.max(1.2,q.scale*.07); ctx.strokeStyle='rgba(59,94,68,.88)'; ctx.stroke();
+        }
+        ctx.globalAlpha=1;
+      }
+    }
+    // Elevated bridge pylons and cables begin before the formal city stage.
+    if (d > 250) {
+      const alpha=Math.min(1,(d-250)/80) * (d>900 ? 1 : 1);
+      const gap=29;
+      const start=Math.floor((d+2)/gap)*gap;
+      for (let w=start;w<d+205;w+=gap) {
+        const z=Math.max(.6,w-d), fade=Math.min(1,(205-(w-d))/40);
+        ctx.globalAlpha=alpha*fade;
+        for (const side of [-1,1]) {
+          const x=side*(W.roadHalf+1.95), q=project(x,0,z), top=project(x,3.75,z), h=q.y-top.y;
+          ctx.strokeStyle='rgba(88,116,138,.75)'; ctx.lineWidth=Math.max(1.4,q.scale*.16);
+          ctx.beginPath(); ctx.moveTo(q.x,q.y); ctx.lineTo(top.x,top.y); ctx.stroke();
+          ctx.strokeStyle='rgba(211,249,255,.28)'; ctx.lineWidth=Math.max(1,q.scale*.045);
+          ctx.beginPath(); ctx.moveTo(top.x,top.y); ctx.lineTo(top.x-side*h*.30,top.y+h*.34); ctx.stroke();
+        }
+        const c0=project(-W.roadHalf-1.95,3.35,z), c1=project(W.roadHalf+1.95,3.35,z);
+        ctx.strokeStyle='rgba(179,237,255,.20)'; ctx.lineWidth=Math.max(1,c0.scale*.035);
+        ctx.beginPath(); ctx.moveTo(c0.x,c0.y); ctx.lineTo(c1.x,c1.y); ctx.stroke();
+      }
+      ctx.globalAlpha=1;
+    }
+    // Night neon signboards stand outside the playable road.
+    if (d > 610) {
+      const alpha=Math.min(1,(d-610)/70);
+      const gap=18;
+      const start=Math.floor((d+1)/gap)*gap;
+      const words=['海风','冲刺','猫爪','1000','夜跑','霓虹'];
+      for (let w=start;w<d+175;w+=gap) {
+        const idx=Math.floor(w/gap), side=idx%2?1:-1;
+        const z=Math.max(.55,w-d), x=side*(W.roadHalf+2.75);
+        const q=project(x,0,z), boardH=1.55*q.scale, boardW=1.85*q.scale, topY=q.y-3.05*q.scale;
+        ctx.globalAlpha=alpha*Math.min(1,(175-(w-d))/35+.25);
+        ctx.strokeStyle='rgba(90,72,120,.90)'; ctx.lineWidth=Math.max(1,q.scale*.075);
+        ctx.beginPath(); ctx.moveTo(q.x,q.y); ctx.lineTo(q.x,topY+boardH); ctx.stroke();
+        const hue=idx%3===0?'#ff6ec7':(idx%3===1?'#61f2ff':'#ffe066');
+        ctx.fillStyle='rgba(5,7,20,.90)';
+        roundRect(q.x-boardW/2,topY,boardW,boardH,Math.max(2,boardW*.12)); ctx.fill();
+        ctx.strokeStyle=hue; ctx.lineWidth=Math.max(1,boardW*.045); ctx.stroke();
+        ctx.shadowColor=hue; ctx.shadowBlur=Math.min(24,boardW*.35);
+        ctx.fillStyle=hue; ctx.font=`800 ${Math.max(5,boardH*.46)}px "Trebuchet MG","PingFang SC",sans-serif`;
+        ctx.textAlign='center'; ctx.textBaseline='middle';
+        ctx.fillText(words[idx%words.length],q.x,topY+boardH*.52,boardW*.86);
+        ctx.shadowBlur=0;
+      }
+      ctx.globalAlpha=1;
+    }
+  }
+
+  function drawEntity(e) {
+    const rel=e.z-state.distance;
+    if (rel<.35 || rel>W.far) return;
+    const alpha=Math.min(1,(W.far-rel)/32);
+    ctx.globalAlpha=alpha;
+    const x=W.lanes[e.lane];
+    if (e.type==='coin') {
+      if (e.used) { ctx.globalAlpha=1; return; }
+      const q=project(x,e.y,rel), r=Math.max(1.2,.38*q.scale);
+      const pulse=(state.elapsed*4+e.z)%1;
+      ctx.beginPath(); ctx.ellipse(q.x,q.y,r*(.58+Math.abs(Math.sin(pulse*Math.PI))*.42),r,0,0,Math.PI*2);
+      const cg=ctx.createRadialGradient(q.x-r*.25,q.y-r*.3,r*.1,q.x,q.y,r);
+      cg.addColorStop(0,'#fff8c8'); cg.addColorStop(.65,'#ffd35c'); cg.addColorStop(1,'#c58614');
+      ctx.fillStyle=cg; ctx.shadowColor='rgba(255,211,92,.75)'; ctx.shadowBlur=Math.min(22,r*1.5); ctx.fill(); ctx.shadowBlur=0;
+      ctx.strokeStyle='rgba(255,255,255,.68)'; ctx.lineWidth=Math.max(.6,r*.09); ctx.stroke();
+    } else if (e.type==='low') {
+      const q=project(x,0,rel), w=1.82*q.scale, h=.72*q.scale;
+      const a={x:q.x-w/2,y:q.y}, b={x:q.x+w/2,y:q.y}, c=project(x+.91,.72,rel), d=project(x-.91,.72,rel);
+      ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.lineTo(c.x,c.y); ctx.lineTo(d.x,d.y); ctx.closePath();
+      ctx.fillStyle='#f25f4c'; ctx.fill();
+      ctx.strokeStyle='#ffd7cf'; ctx.lineWidth=Math.max(1,q.scale*.055); ctx.stroke();
+      ctx.fillStyle='rgba(255,255,255,.86)';
+      for(let i=0;i<3;i++) ctx.fillRect(q.x-w*.34+i*w*.31,q.y-h*.72,w*.16,h*.42);
+      ctx.fillStyle='rgba(0,0,0,.22)'; ctx.beginPath(); ctx.ellipse(q.x,q.y,w*.55,h*.15,0,0,Math.PI*2); ctx.fill();
+    } else if (e.type==='block') {
+      const q=project(x,0,rel), w=1.82*q.scale, h=1.60*q.scale;
+      ctx.fillStyle='rgba(0,0,0,.28)'; ctx.beginPath(); ctx.ellipse(q.x,q.y,w*.58,h*.12,0,0,Math.PI*2); ctx.fill();
+      const bg=ctx.createLinearGradient(q.x-w/2,q.y-h,q.x+w/2,q.y);
+      bg.addColorStop(0,'#3d7ea8'); bg.addColorStop(.45,'#285b83'); bg.addColorStop(1,'#1b4265');
+      roundRect(q.x-w/2,q.y-h,w,h,Math.max(2,w*.07)); ctx.fillStyle=bg; ctx.fill();
+      ctx.strokeStyle='rgba(159,231,255,.62)'; ctx.lineWidth=Math.max(1,w*.025); ctx.stroke();
+      ctx.fillStyle='rgba(190,242,255,.20)'; ctx.fillRect(q.x-w*.40,q.y-h*.77,w*.80,h*.27);
+      ctx.fillStyle='#e8fbff'; ctx.font=`800 ${Math.max(5,h*.17)}px "Trebuchet MG","PingFang SC",sans-serif`; ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillText('NO',q.x,q.y-h*.37,w*.65);
+      ctx.beginPath(); ctx.moveTo(q.x-w*.42,q.y-h*.65); ctx.lineTo(q.x+w*.42,q.y-h*.65);
+      ctx.strokeStyle='rgba(97,242,255,.35)'; ctx.lineWidth=Math.max(1,h*.015); ctx.stroke();
+    }
+    ctx.globalAlpha=1;
+  }
+
+  function drawFinish() {
+    const rel=W.finish-state.distance;
+    if (rel>.42 && rel>W.far) return;
+    const z=Math.max(.42,rel);
+    const pl=project(-W.roadHalf-.7,0,z), pr=project(W.roadHalf+.7,0,z);
+    const tl=project(-W.roadHalf-.7,4.15,z), tr=project(W.roadHalf+.7,4.15,z);
+    ctx.lineCap='round';
+    ctx.strokeStyle='#f8fbff'; ctx.lineWidth=Math.max(1,pl.scale*.13);
+    ctx.beginPath(); ctx.moveTo(pl.x,pl.y); ctx.lineTo(tl.x,tl.y); ctx.moveTo(pr.x,pr.y); ctx.lineTo(tr.x,tr.y); ctx.stroke();
+    const barH=.78*pl.scale;
+    const grad=ctx.createLinearGradient(tl.x,tl.y,tr.x,tr.y);
+    grad.addColorStop(0,'#66f2e0'); grad.addColorStop(.5,'#6fb5ff'); grad.addColorStop(1,'#ff71c8');
+    ctx.beginPath(); ctx.moveTo(tl.x,tl.y); ctx.lineTo(tr.x,tr.y); ctx.lineTo(tr.x,tr.y+barH); ctx.lineTo(tl.x,tl.y+barH); ctx.closePath();
+    ctx.fillStyle=grad; ctx.fill();
+    const cols=16, rows=2;
+    for(let r=0;r<rows;r++) for(let c=0;c<cols;c++) {
+      if((r+c)%2) continue;
+      const x0=tl.x+(tr.x-tl.x)*c/cols, x1=tl.x+(tr.x-tl.x)*(c+1)/cols;
+      ctx.fillStyle='rgba(8,15,30,.92)';
+      ctx.beginPath(); ctx.moveTo(x0,tl.y+r*barH/2); ctx.lineTo(x1,tl.y+r*barH/2); ctx.lineTo(x1,tl.y+(r+1)*barH/2); ctx.lineTo(x0,tl.y+(r+1)*barH/2); ctx.closePath(); ctx.fill();
+    }
+    if (state.mode==='running') {
+      ctx.fillStyle='#081420'; ctx.font=`800 ${Math.max(6,barH*.42)}px "Trebuchet MG","PingFang SC",sans-serif`; ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillText('1000M FINISH',(tl.x+tr.x)/2,tl.y+barH*.52,(tr.x-tl.x)*.86);
+    }
+  }
+
+  function drawCat() {
+    const p=project(state.catX,0,W.catZ), s=p.scale;
+    const blink=state.invuln>0 && Math.floor(state.invuln*12)%2===0;
+    if (blink) return;
+    const w=1.16*s, h=.92*s;
+    ctx.save();
+    // ground shadow shrinks as the cat jumps, preserving its world height.
+    ctx.fillStyle=`rgba(0,0,0,${.34-state.catY*.10})`;
+    ctx.beginPath(); ctx.ellipse(p.x,p.y,w*.55,Math.max(2,h*.16-state.catY*s*.025),0,0,Math.PI*2); ctx.fill();
+    const q=project(state.catX,state.catY,W.catZ);
+    ctx.translate(q.x,q.y);
+    ctx.rotate((W.lanes[state.lane]-state.catX)*.10 + (state.airborne ? -.07 : 0));
+    const run=reducedMotion?.25:Math.sin(state.runningPhase);
+    const run2=reducedMotion?-.25:Math.sin(state.runningPhase+Math.PI);
+
+    // tail
+    ctx.strokeStyle='#f7b58c'; ctx.lineWidth=Math.max(2,s*.10); ctx.lineCap='round';
+    ctx.beginPath(); ctx.moveTo(-w*.43,-h*.42);
+    ctx.quadraticCurveTo(-w*.86,-h*.58+run*h*.10,-w*.74,-h*.95+run*h*.09); ctx.stroke();
+    // hind legs / front legs
+    ctx.strokeStyle='#ef9d76'; ctx.lineWidth=Math.max(2,s*.085);
+    ctx.beginPath(); ctx.moveTo(-w*.21,-h*.22); ctx.lineTo(-w*.30+run*w*.11,.02); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(w*.24,-h*.22); ctx.lineTo(w*.33+run2*w*.11,.02); ctx.stroke();
+    // body
+    const bg=ctx.createLinearGradient(-w*.4,-h,w*.4,0);
+    bg.addColorStop(0,'#ffd9b4'); bg.addColorStop(1,'#f39d70');
+    ctx.fillStyle=bg; ctx.beginPath(); ctx.ellipse(0,-h*.46,w*.46,h*.35,-.10,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle='#fff4e7'; ctx.beginPath(); ctx.ellipse(w*.03,-h*.40,w*.25,h*.18,-.08,0,Math.PI*2); ctx.fill();
+    // backpack / number cape
+    ctx.fillStyle='#35d6c8'; ctx.beginPath(); ctx.moveTo(-w*.18,-h*.72); ctx.lineTo(w*.35,-h*.90); ctx.lineTo(w*.37,-h*.38); ctx.lineTo(-w*.14,-h*.48); ctx.closePath(); ctx.fill();
+    // head
+    ctx.fillStyle='#ffcf9c'; ctx.beginPath(); ctx.ellipse(w*.31,-h*.83,w*.24,h*.21,0,0,Math.PI*2); ctx.fill();
+    // ears
+    ctx.beginPath(); ctx.moveTo(w*.15,-h*.95); ctx.lineTo(w*.13,-h*.19-h*.81); ctx.lineTo(w*.36,-h*.98); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(w*.47,-h*.98); ctx.lineTo(w*.59,-h*.83); ctx.lineTo(w*.39,-h*.94); ctx.closePath(); ctx.fill();
+    // face
+    ctx.fillStyle='#25303b';
+    ctx.beginPath(); ctx.ellipse(w*.22,-h*.84,Math.max(.8,w*.025),Math.max(1.2,h*.035),0,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(w*.40,-h*.84,Math.max(.8,w*.025),Math.max(1.2,h*.035),0,0,Math.PI*2); ctx.fill();
+    ctx.strokeStyle='#25303b'; ctx.lineWidth=Math.max(.7,w*.015);
+    ctx.beginPath(); ctx.moveTo(w*.30,-h*.77); ctx.lineTo(w*.34,-h*.735); ctx.lineTo(w*.38,-h*.77); ctx.stroke();
+    if (state.mode==='running' && state.lives<=1) { // nervous mouth after a hit
+      ctx.beginPath(); ctx.ellipse(w*.32,-h*.68,Math.max(1,w*.035),Math.max(1,h*.025),0,0,Math.PI*2); ctx.fill();
+    } else {
+      ctx.beginPath(); ctx.arc(w*.32,-h*.70,Math.max(1,w*.04),.15*Math.PI,.85*Math.PI); ctx.stroke();
+    }
+    // scarf streamer: the journey's sea-wind signature
+    ctx.strokeStyle='rgba(97,242,255,.82)'; ctx.lineWidth=Math.max(1.4,s*.045);
+    ctx.beginPath(); ctx.moveTo(w*.08,-h*.72);
+    ctx.quadraticCurveTo(-w*.35,-h*.80-run*h*.07,-w*.82,-h*.52-run*h*.12); ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawSpeedVeil(p) {
+    if (state.mode!=='running') return;
+    const intensity=Math.max(0,(state.speed-17)/10);
+    if (intensity<=0) return;
+    ctx.save(); ctx.globalAlpha=intensity*.18; ctx.strokeStyle=p.stripe; ctx.lineWidth=1.5;
+    for(let i=0;i<24;i++) {
+      const seed=Math.sin(i*77.13+Math.floor(state.elapsed*8))*43758.5453;
+      const rnd=seed-Math.floor(seed);
+      const y=view.horizon+(view.h-view.horizon)*Math.pow(rnd,.6);
+      const side=i%2?1:-1;
+      const len=30+rnd*120;
+      const x=view.cx+side*(view.w*.42+rnd*view.w*.22);
+      ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(x-side*len,y+len*.08); ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function render() {
+    const p=palette(state.distance);
+    ctx.save();
+    if (state.shake>0 && !reducedMotion) {
+      const a=state.shake*7;
+      ctx.translate((Math.random()-.5)*a,(Math.random()-.5)*a);
+    }
+    drawBackdrop(p);
+    drawRoad(p);
+    drawRails(p);
+    drawScenery(p);
+    const visible=state.entities.filter(e => e.z-state.distance>.35 && e.z-state.distance<W.far && !e.used);
+    visible.sort((a,b)=>b.z-a.z);
+    for(const e of visible) drawEntity(e);
+    drawFinish();
+    drawCat();
+    drawSpeedVeil(p);
+    ctx.restore();
+    // pickup flash sits outside the camera shake.
+    if(state.elapsed-state.lastPickup<.14) {
+      ctx.fillStyle=`rgba(255,225,125,${.16*(1-(state.elapsed-state.lastPickup)/.14)})`;
+      ctx.fillRect(0,0,view.w,view.h);
+    }
+  }
+
+  let last=performance.now();
+  function frame(now) {
+    const dt=Math.min(.033,(now-last)/1000); last=now;
+    update(dt);
+    render();
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+
+  function togglePause(force) {
+    if(state.mode==='running' && force!==false) {
+      state.mode='paused'; els.pause.hidden=false;
+      els.pauseButton.textContent='▶'; els.pauseButton.setAttribute('aria-label','继续游戏');
+    } else if(state.mode==='paused' && force!==true) {
+      state.mode='running'; els.pause.hidden=true; last=performance.now();
+      els.pauseButton.textContent='⏸'; els.pauseButton.setAttribute('aria-label','暂停游戏');
+    }
+  }
+
+  addEventListener('keydown', event => {
+    const key=event.key;
+    if(['ArrowLeft','ArrowRight','ArrowUp',' ','Spacebar'].includes(key)) event.preventDefault();
+    if(key==='ArrowLeft'||key==='a'||key==='A') move(-1);
+    else if(key==='ArrowRight'||key==='d'||key==='D') move(1);
+    else if(key===' '||key==='ArrowUp'||key==='w'||key==='W') {
+      if(state.mode==='start') { enableAudio(); resetGame(); } else jump();
+    } else if(key==='p'||key==='P'||key==='Escape') togglePause();
+  }, { passive:false });
+
+  let touchStart=null;
+  canvas.addEventListener('pointerdown', e => {
+    touchStart={x:e.clientX,y:e.clientY,time:performance.now()};
+    if(state.mode==='start') { enableAudio(); resetGame(); }
+  });
+  canvas.addEventListener('pointerup', e => {
+    if(!touchStart) return;
+    const dx=e.clientX-touchStart.x, dy=e.clientY-touchStart.y;
+    if(Math.hypot(dx,dy)>34) {
+      if(Math.abs(dx)>Math.abs(dy)) move(dx>0?1:-1);
+      else if(dy<0) jump();
+    } else if(state.mode==='running') jump();
+    touchStart=null;
+  });
+
+  document.getElementById('startButton').addEventListener('click', () => { enableAudio(); resetGame(); });
+  document.getElementById('againButton').addEventListener('click', () => { enableAudio(); resetGame(); });
+  document.getElementById('resumeButton').addEventListener('click', () => togglePause(false));
+  document.getElementById('restartFromPause').addEventListener('click', () => resetGame());
+  els.pauseButton.addEventListener('click', () => togglePause());
+  els.muteButton.addEventListener('click', () => {
+    state.muted=!state.muted;
+    if(!state.muted) enableAudio();
+    els.muteButton.textContent=state.muted?'🔇':'🔊';
+    els.muteButton.setAttribute('aria-label',state.muted?'开启音效':'关闭音效');
+  });
+  for(const [id,fn] of [
+    ['leftButton',()=>move(-1)], ['rightButton',()=>move(1)], ['jumpButton',()=>jump()]
+  ]) {
+    document.getElementById(id).addEventListener('pointerdown', e => { e.preventDefault(); enableAudio(); fn(); });
+  }
+  document.addEventListener('visibilitychange', () => { if(document.hidden) togglePause(true); });
+
+  els.startBest.textContent=bestLabel();
+  updateHUD();
+})();
+</script>
+</body>
+</html>
